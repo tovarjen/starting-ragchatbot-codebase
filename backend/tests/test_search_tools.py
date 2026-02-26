@@ -9,8 +9,8 @@ if BACKEND_DIR not in sys.path:
 
 from vector_store import SearchResults
 
-
 # ─── Error path ───────────────────────────────────────────────────────────────
+
 
 def test_error_returned_from_search(course_search_tool, mock_vector_store):
     mock_vector_store.search.return_value = SearchResults(
@@ -23,14 +23,17 @@ def test_error_returned_from_search(course_search_tool, mock_vector_store):
 def test_error_returned_before_empty_check(course_search_tool, mock_vector_store):
     """Error takes priority even when documents are present."""
     mock_vector_store.search.return_value = SearchResults(
-        documents=["some content"], metadata=[{}], distances=[0.5],
-        error="Partial failure"
+        documents=["some content"],
+        metadata=[{}],
+        distances=[0.5],
+        error="Partial failure",
     )
     result = course_search_tool.execute(query="Python basics")
     assert result == "Partial failure"
 
 
 # ─── Empty results path ───────────────────────────────────────────────────────
+
 
 def test_empty_no_filters(course_search_tool):
     result = course_search_tool.execute(query="Python basics")
@@ -54,12 +57,15 @@ def test_lesson_number_zero_missing_from_empty_message(course_search_tool):
 
 
 def test_empty_with_both_filters(course_search_tool):
-    result = course_search_tool.execute(query="Python basics", course_name="MCP", lesson_number=2)
+    result = course_search_tool.execute(
+        query="Python basics", course_name="MCP", lesson_number=2
+    )
     assert "in course 'MCP'" in result
     assert "in lesson 2" in result
 
 
 # ─── Search argument forwarding ───────────────────────────────────────────────
+
 
 def test_query_forwarded_to_store(course_search_tool, mock_vector_store):
     course_search_tool.execute(query="decorators in Python")
@@ -78,6 +84,7 @@ def test_lesson_number_forwarded_to_store(course_search_tool, mock_vector_store)
 
 # ─── last_sources population ──────────────────────────────────────────────────
 
+
 def test_last_sources_empty_before_call(course_search_tool):
     assert course_search_tool.last_sources == []
 
@@ -95,7 +102,9 @@ def test_last_sources_populated_after_search(course_search_tool, mock_vector_sto
     assert course_search_tool.last_sources[0]["url"] == "http://example.com/lesson1"
 
 
-def test_multiple_results_produce_multiple_sources(course_search_tool, mock_vector_store):
+def test_multiple_results_produce_multiple_sources(
+    course_search_tool, mock_vector_store
+):
     mock_vector_store.search.return_value = SearchResults(
         documents=["doc1", "doc2"],
         metadata=[
@@ -108,7 +117,9 @@ def test_multiple_results_produce_multiple_sources(course_search_tool, mock_vect
     assert len(course_search_tool.last_sources) == 2
 
 
-def test_no_lesson_number_in_metadata_gives_none_url(course_search_tool, mock_vector_store):
+def test_no_lesson_number_in_metadata_gives_none_url(
+    course_search_tool, mock_vector_store
+):
     mock_vector_store.search.return_value = SearchResults(
         documents=["content"],
         metadata=[{"course_title": "Python 101"}],  # no lesson_number key
@@ -144,6 +155,7 @@ def test_subsequent_call_overwrites_sources(course_search_tool, mock_vector_stor
 
 # ─── Output formatting ────────────────────────────────────────────────────────
 
+
 def test_output_contains_header_and_content(course_search_tool, mock_vector_store):
     mock_vector_store.search.return_value = SearchResults(
         documents=["The content here"],
@@ -155,7 +167,9 @@ def test_output_contains_header_and_content(course_search_tool, mock_vector_stor
     assert "The content here" in result
 
 
-def test_multiple_results_separated_by_double_newline(course_search_tool, mock_vector_store):
+def test_multiple_results_separated_by_double_newline(
+    course_search_tool, mock_vector_store
+):
     mock_vector_store.search.return_value = SearchResults(
         documents=["First doc", "Second doc"],
         metadata=[
@@ -169,7 +183,9 @@ def test_multiple_results_separated_by_double_newline(course_search_tool, mock_v
     assert len(parts) == 2
 
 
-def test_no_lesson_in_header_without_lesson_number(course_search_tool, mock_vector_store):
+def test_no_lesson_in_header_without_lesson_number(
+    course_search_tool, mock_vector_store
+):
     mock_vector_store.search.return_value = SearchResults(
         documents=["content"],
         metadata=[{"course_title": "Python 101"}],  # no lesson_number
