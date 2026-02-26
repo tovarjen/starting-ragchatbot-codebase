@@ -15,21 +15,86 @@ document.addEventListener('DOMContentLoaded', () => {
     sendButton = document.getElementById('sendButton');
     totalCourses = document.getElementById('totalCourses');
     courseTitles = document.getElementById('courseTitles');
-    
+
+    initTheme();
     setupEventListeners();
     createNewSession();
     loadCourseStats();
 });
 
+// ── Theme Toggle ──────────────────────────────────────
+
+/**
+ * Apply a theme to the DOM without saving to localStorage.
+ * Used by both initTheme (silent) and applyTheme (explicit user choice).
+ */
+function setTheme(theme) {
+    const btn = document.getElementById('themeToggle');
+    if (theme === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        btn.setAttribute('aria-label', 'Switch to dark mode');
+    } else {
+        document.documentElement.removeAttribute('data-theme');
+        btn.setAttribute('aria-label', 'Switch to light mode');
+    }
+}
+
+/**
+ * Called on page load. Resolves the correct starting theme in priority order:
+ *   1. Explicit user preference saved in localStorage
+ *   2. OS-level prefers-color-scheme (light or dark)
+ *   3. Default: dark
+ *
+ * Wraps the DOM update in a 'no-transitions' guard so that the initial
+ * paint never triggers the CSS crossfade animation (prevents flash).
+ */
+function initTheme() {
+    const saved = localStorage.getItem('theme');
+    const osPrefers = window.matchMedia('(prefers-color-scheme: light)').matches
+        ? 'light'
+        : 'dark';
+    const theme = saved || osPrefers;
+
+    // Suppress transitions for this one frame so the initial paint is instant.
+    document.documentElement.classList.add('no-transitions');
+    setTheme(theme);
+    // Two rAF calls ensure the browser has committed the repaint before
+    // re-enabling transitions.
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            document.documentElement.classList.remove('no-transitions');
+        });
+    });
+}
+
+/**
+ * Apply a theme and persist the explicit user choice to localStorage.
+ */
+function applyTheme(theme) {
+    setTheme(theme);
+    localStorage.setItem('theme', theme);
+}
+
+/**
+ * Toggle between light and dark, saving the result.
+ */
+function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme');
+    applyTheme(current === 'light' ? 'dark' : 'light');
+}
+
 // Event Listeners
 function setupEventListeners() {
+    // Theme toggle
+    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+
     // Chat functionality
     sendButton.addEventListener('click', sendMessage);
     chatInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendMessage();
     });
-    
-    
+
+
     // New chat button
     document.getElementById('newChatBtn').addEventListener('click', createNewSession);
 
