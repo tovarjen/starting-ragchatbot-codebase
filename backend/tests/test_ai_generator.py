@@ -42,6 +42,43 @@ def _tool_responses(mock_client, tool_name="search_course_content",
     return tool_block
 
 
+def _two_round_tool_responses(mock_client, tool_name="search_course_content",
+                               tool_input_1=None, tool_input_2=None,
+                               final_text="Final answer"):
+    """Set up mock client for a three-call two-round tool-use flow. Returns (tool_block_1, tool_block_2)."""
+    if tool_input_1 is None:
+        tool_input_1 = {"query": "round 1 query"}
+    if tool_input_2 is None:
+        tool_input_2 = {"query": "round 2 query"}
+
+    tool_block_1 = MagicMock()
+    tool_block_1.type = "tool_use"
+    tool_block_1.name = tool_name
+    tool_block_1.id = "tool_round1"
+    tool_block_1.input = tool_input_1
+
+    tool_block_2 = MagicMock()
+    tool_block_2.type = "tool_use"
+    tool_block_2.name = tool_name
+    tool_block_2.id = "tool_round2"
+    tool_block_2.input = tool_input_2
+
+    first_response = MagicMock()
+    first_response.stop_reason = "tool_use"
+    first_response.content = [tool_block_1]
+
+    second_response = MagicMock()
+    second_response.stop_reason = "tool_use"
+    second_response.content = [tool_block_2]
+
+    third_response = MagicMock()
+    third_response.stop_reason = "end_turn"
+    third_response.content = [MagicMock(text=final_text)]
+
+    mock_client.messages.create.side_effect = [first_response, second_response, third_response]
+    return tool_block_1, tool_block_2
+
+
 # ─── Direct response path ─────────────────────────────────────────────────────
 
 def test_direct_response_returns_text(ai_generator, mock_anthropic_client):
@@ -126,20 +163,22 @@ def test_tool_path_makes_two_api_calls(ai_generator, mock_anthropic_client):
     assert mock_anthropic_client.messages.create.call_count == 2
 
 
-def test_second_call_has_no_tools(ai_generator, mock_anthropic_client):
+def test_second_call_has_tools(ai_generator, mock_anthropic_client):
+    """Loop calls keep tools attached so Claude can make a second tool call if needed."""
     _tool_responses(mock_anthropic_client)
     mock_tool_manager = MagicMock()
     mock_tool_manager.execute_tool.return_value = "results"
 
+    tools = [{"name": "search_course_content"}]
     ai_generator.generate_response(
         query="something",
-        tools=[{"name": "search_course_content"}],
+        tools=tools,
         tool_manager=mock_tool_manager,
     )
 
     second_call_kwargs = mock_anthropic_client.messages.create.call_args_list[1].kwargs
-    assert "tools" not in second_call_kwargs
-    assert "tool_choice" not in second_call_kwargs
+    assert "tools" in second_call_kwargs
+    assert "tool_choice" in second_call_kwargs
 
 
 def test_second_call_messages_structure(ai_generator, mock_anthropic_client):
@@ -198,3 +237,104 @@ def test_no_tool_manager_falls_through_to_text(ai_generator, mock_anthropic_clie
     result = ai_generator.generate_response(query="something", tool_manager=None)
     assert result == "fallback text"
     assert mock_anthropic_client.messages.create.call_count == 1
+
+
+# ─── Multi-round tool execution path ──────────────────────────────────────────
+
+def test_two_round_tool_path_makes_three_api_calls(ai_generator, mock_anthropic_client):
+    _two_round_tool_responses(mock_anthropic_client)
+    mock_tool_manager = MagicMock()
+    mock_tool_manager.execute_tool.return_value = "results"
+
+    ai_generator.generate_response(
+        query="something",
+        tools=[{"name": "search_course_content"}],
+        tool_manager=mock_tool_manager,
+    )
+    assert mock_anthropic_client.messages.create.call_count == 3
+
+
+def test_two_round_tool_manager_execute_called_twice(ai_generator, mock_anthropic_client):
+    tool_input_1 = {"query": "round 1"}
+    tool_input_2 = {"query": "round 2"}
+    _two_round_tool_responses(mock_anthropic_client,
+                              tool_input_1=tool_input_1,
+                              tool_input_2=tool_input_2)
+
+    mock_tool_manager = MagicMock()
+    mock_tool_manager.execute_tool.return_value = "results"
+
+    ai_generator.generate_response(
+        query="something",
+        tools=[{"name": "search_course_content"}],
+        tool_manager=mock_tool_manager,
+    )
+
+    assert mock_tool_manager.execute_tool.call_count == 2
+    mock_tool_manager.execute_tool.assert_any_call("search_course_content", query="round 1")
+    mock_tool_manager.execute_tool.assert_any_call("search_course_content", query="round 2")
+
+
+def test_two_round_second_and_third_calls_have_tools(ai_generator, mock_anthropic_client):
+    """When cap is hit (3x tool_use), loop calls [1] and [2] have tools; only final call [3] omits them."""
+    tool_block_1 = MagicMock(); tool_block_1.type = "tool_use"; tool_block_1.name = "search_course_content"; tool_block_1.id = "id1"; tool_block_1.input = {"query": "q1"}
+    tool_block_2 = MagicMock(); tool_block_2.type = "tool_use"; tool_block_2.name = "search_course_content"; tool_block_2.id = "id2"; tool_block_2.input = {"query": "q2"}
+    tool_block_3 = MagicMock(); tool_block_3.type = "tool_use"; tool_block_3.name = "search_course_content"; tool_block_3.id = "id3"; tool_block_3.input = {"query": "q3"}
+
+    r1 = MagicMock(); r1.stop_reason = "tool_use"; r1.content = [tool_block_1]
+    r2 = MagicMock(); r2.stop_reason = "tool_use"; r2.content = [tool_block_2]
+    r3 = MagicMock(); r3.stop_reason = "tool_use"; r3.content = [tool_block_3]
+    r4 = MagicMock(); r4.stop_reason = "end_turn"; r4.content = [MagicMock(text="final")]
+
+    mock_anthropic_client.messages.create.side_effect = [r1, r2, r3, r4]
+
+    mock_tool_manager = MagicMock()
+    mock_tool_manager.execute_tool.return_value = "results"
+
+    ai_generator.generate_response(
+        query="something",
+        tools=[{"name": "search_course_content"}],
+        tool_manager=mock_tool_manager,
+    )
+
+    call_args_list = mock_anthropic_client.messages.create.call_args_list
+    assert mock_anthropic_client.messages.create.call_count == 4
+
+    # Loop calls [1] and [2] include tools
+    assert "tools" in call_args_list[1].kwargs
+    assert "tool_choice" in call_args_list[1].kwargs
+    assert "tools" in call_args_list[2].kwargs
+    assert "tool_choice" in call_args_list[2].kwargs
+
+    # Final forced call [3] omits tools
+    assert "tools" not in call_args_list[3].kwargs
+    assert "tool_choice" not in call_args_list[3].kwargs
+
+
+def test_two_round_early_exit_makes_two_api_calls(ai_generator, mock_anthropic_client):
+    """end_turn on the first loop iteration exits early — no extra final call."""
+    _tool_responses(mock_anthropic_client, final_text="early exit answer")
+    mock_tool_manager = MagicMock()
+    mock_tool_manager.execute_tool.return_value = "results"
+
+    result = ai_generator.generate_response(
+        query="something",
+        tools=[{"name": "search_course_content"}],
+        tool_manager=mock_tool_manager,
+    )
+
+    assert mock_anthropic_client.messages.create.call_count == 2
+    assert result == "early exit answer"
+
+
+def test_two_round_final_response_text(ai_generator, mock_anthropic_client):
+    _two_round_tool_responses(mock_anthropic_client, final_text="Two round final answer")
+    mock_tool_manager = MagicMock()
+    mock_tool_manager.execute_tool.return_value = "results"
+
+    result = ai_generator.generate_response(
+        query="something",
+        tools=[{"name": "search_course_content"}],
+        tool_manager=mock_tool_manager,
+    )
+    assert result == "Two round final answer"
