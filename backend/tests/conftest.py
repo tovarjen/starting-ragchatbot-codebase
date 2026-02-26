@@ -21,6 +21,7 @@ def mock_vector_store():
 @pytest.fixture
 def course_search_tool(mock_vector_store):
     from search_tools import CourseSearchTool
+
     return CourseSearchTool(mock_vector_store)
 
 
@@ -35,4 +36,5 @@ def mock_anthropic_client():
 @pytest.fixture
 def ai_generator(mock_anthropic_client):
     from ai_generator import AIGenerator
+
     return AIGenerator(api_key="fake-key", model="claude-test-model")

@@ -21,15 +21,18 @@ def patched_rag_system():
     mock_config.ANTHROPIC_MODEL = "fake-model"
     mock_config.MAX_HISTORY = 5
 
-    with patch("rag_system.DocumentProcessor"), \
-         patch("rag_system.VectorStore") as MockVectorStore, \
-         patch("rag_system.AIGenerator") as MockAIGen, \
-         patch("rag_system.SessionManager") as MockSession, \
-         patch("rag_system.ToolManager") as MockToolMgr, \
-         patch("rag_system.CourseSearchTool"), \
-         patch("rag_system.CourseOutlineTool"):
+    with (
+        patch("rag_system.DocumentProcessor"),
+        patch("rag_system.VectorStore") as MockVectorStore,
+        patch("rag_system.AIGenerator") as MockAIGen,
+        patch("rag_system.SessionManager") as MockSession,
+        patch("rag_system.ToolManager") as MockToolMgr,
+        patch("rag_system.CourseSearchTool"),
+        patch("rag_system.CourseOutlineTool"),
+    ):
 
         from rag_system import RAGSystem
+
         rag = RAGSystem(mock_config)
 
         # Expose mock instances for test assertions
@@ -53,6 +56,7 @@ def patched_rag_system():
 
 # ─── Return value shape ───────────────────────────────────────────────────────
 
+
 def test_query_returns_tuple(patched_rag_system):
     result = patched_rag_system.query("What is Python?")
     assert isinstance(result, tuple)
@@ -71,20 +75,29 @@ def test_sources_from_tool_manager(patched_rag_system):
 
 # ─── Prompt construction ──────────────────────────────────────────────────────
 
+
 def test_query_wrapped_in_prompt(patched_rag_system):
     patched_rag_system.query("What is a decorator?")
-    call_kwargs = patched_rag_system._mock_ai_generator.generate_response.call_args.kwargs
-    assert call_kwargs["query"] == "Answer this question about course materials: What is a decorator?"
+    call_kwargs = (
+        patched_rag_system._mock_ai_generator.generate_response.call_args.kwargs
+    )
+    assert (
+        call_kwargs["query"]
+        == "Answer this question about course materials: What is a decorator?"
+    )
 
 
 def test_raw_query_not_passed_unchanged(patched_rag_system):
     raw_query = "What is a decorator?"
     patched_rag_system.query(raw_query)
-    call_kwargs = patched_rag_system._mock_ai_generator.generate_response.call_args.kwargs
+    call_kwargs = (
+        patched_rag_system._mock_ai_generator.generate_response.call_args.kwargs
+    )
     assert call_kwargs["query"] != raw_query
 
 
 # ─── Session handling ─────────────────────────────────────────────────────────
+
 
 def test_get_history_called_with_session_id(patched_rag_system):
     patched_rag_system.query("question", session_id="sess-1")
@@ -112,15 +125,20 @@ def test_no_exchange_saved_without_session_id(patched_rag_system):
 
 # ─── Tool manager wiring ──────────────────────────────────────────────────────
 
+
 def test_tool_definitions_forwarded_to_generate_response(patched_rag_system):
     patched_rag_system.query("question")
-    call_kwargs = patched_rag_system._mock_ai_generator.generate_response.call_args.kwargs
+    call_kwargs = (
+        patched_rag_system._mock_ai_generator.generate_response.call_args.kwargs
+    )
     assert call_kwargs["tools"] == [{"name": "search_course_content"}]
 
 
 def test_tool_manager_passed_to_generate_response(patched_rag_system):
     patched_rag_system.query("question")
-    call_kwargs = patched_rag_system._mock_ai_generator.generate_response.call_args.kwargs
+    call_kwargs = (
+        patched_rag_system._mock_ai_generator.generate_response.call_args.kwargs
+    )
     assert call_kwargs["tool_manager"] is patched_rag_system._mock_tool_manager
 
 
@@ -132,14 +150,19 @@ def test_reset_sources_called_after_get_last_sources(patched_rag_system):
 
 # ─── Content-query integration scenario ──────────────────────────────────────
 
+
 def test_full_pipeline_with_session(patched_rag_system):
     response, sources = patched_rag_system.query("Explain classes", session_id="s1")
 
     # History was fetched
-    patched_rag_system._mock_session_manager.get_conversation_history.assert_called_once_with("s1")
+    patched_rag_system._mock_session_manager.get_conversation_history.assert_called_once_with(
+        "s1"
+    )
 
     # AI was called with the wrapped prompt and the fetched history
-    call_kwargs = patched_rag_system._mock_ai_generator.generate_response.call_args.kwargs
+    call_kwargs = (
+        patched_rag_system._mock_ai_generator.generate_response.call_args.kwargs
+    )
     assert "Explain classes" in call_kwargs["query"]
     assert call_kwargs["conversation_history"] == "past history"
 
